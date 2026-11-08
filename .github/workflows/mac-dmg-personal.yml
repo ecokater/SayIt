@@ -1,0 +1,56 @@
+name: Mac DMG 個人建置（fork 專用，不上 PR）
+
+# 手動觸發：在 macOS runner 上直接建未簽章 DMG，上傳為 workflow artifact。
+# 不建 tag、不建 release、不需要任何 Apple 簽章 secrets。
+# 下載後在 Mac 上「右鍵 → 開啟」即可安裝（未簽章應用首次需此操作）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust_target: aarch64-apple-darwin
+            artifact_name: SayIt-mac-arm64.dmg
+          - rust_target: x86_64-apple-darwin
+            artifact_name: SayIt-mac-x64.dmg
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned DMG
+        run: npx -y @tauri-apps/cli@2 build --bundles dmg --target ${{ matrix.rust_target }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
